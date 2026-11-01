@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#7a1c1c">
+<title>Lieutenant Study</title>
+<style>
+:root{--bg:#f6f3ee;--card:#fff;--ink:#1d1b19;--muted:#6b645c;--line:#e2dcd2;--red:#9b2226;--red-ink:#fff;--good:#2d6a4f;--bad:#9b2226;--soft:#efe9df}
+@media (prefers-color-scheme:dark){:root{--bg:#141210;--card:#1f1c19;--ink:#f1ece4;--muted:#a59d92;--line:#36312b;--red:#c0392b;--soft:#2a2622;--good:#52b788;--bad:#e5737a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:env(safe-area-inset-top) 0 calc(72px + env(safe-area-inset-bottom))}
+header{padding:18px 18px 6px;max-width:680px;margin:0 auto}
+header h1{margin:0;font-size:1.35rem}
+header p{margin:2px 0 0;color:var(--muted);font-size:.9rem}
+main{max-width:680px;margin:0 auto;padding:8px 18px}
+nav{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;border:0;background:none;color:var(--muted);font:inherit;font-size:.85rem;padding:12px 4px 10px;cursor:pointer}
+nav button.on{color:var(--red);font-weight:600;box-shadow:inset 0 3px 0 var(--red)}
+select{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%;margin:6px 0 14px}
+.stats{display:flex;gap:10px;margin-bottom:14px}
+.stat{flex:1;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.stat b{display:block;font-size:1.5rem;line-height:1.1}
+.stat span{color:var(--muted);font-size:.8rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px 20px;min-height:200px;display:flex;flex-direction:column;justify-content:center}
+.card .front{font-size:1.2rem;font-weight:600}
+.card .back{margin-top:16px;padding-top:16px;border-top:1px dashed var(--line)}
+.src{color:var(--muted);font-size:.8rem;margin-top:10px}
+.row{display:flex;gap:10px;margin-top:14px}
+.btn{flex:1;border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit;font-weight:600;border-radius:10px;padding:14px 10px;cursor:pointer;min-height:50px}
+.btn.primary{background:var(--red);border-color:var(--red);color:var(--red-ink)}
+.btn.again{color:var(--bad)}.btn.good{color:var(--good)}
+.choice{display:block;width:100%;text-align:left;margin-top:10px;font-weight:500}
+.choice.right{border-color:var(--good);background:color-mix(in srgb,var(--good) 14%,var(--card))}
+.choice.wrong{border-color:var(--bad);background:color-mix(in srgb,var(--bad) 14%,var(--card))}
+.why{margin-top:14px;background:var(--soft);border-radius:10px;padding:12px}
+.empty{color:var(--muted);text-align:center;padding:40px 10px}
+.bar{height:8px;background:var(--soft);border-radius:4px;overflow:hidden;margin-top:6px}
+.bar i{display:block;height:100%;background:var(--red)}
+.list{list-style:none;margin:0;padding:0}
+.list li{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+.list li small{color:var(--muted)}
+.link{background:none;border:0;color:var(--red);font:inherit;text-decoration:underline;cursor:pointer;padding:0}
+</style>
+</head>
+<body>
+<header><h1 id="title">Lieutenant Study</h1><p id="sub"></p></header>
+<main id="app"></main>
+<nav>
+  <button data-v="review" class="on">Cards</button>
+  <button data-v="quiz">Quiz</button>
+  <button data-v="weak">Weak areas</button>
+  <button data-v="about">Progress</button>
+</nav>
+<script src="data.js"></script>
+<script>
+(function(){
+var D = window.STUDY || {cards:[],questions:[],decks:[],sources:[]};
+var DAY = 864e5, GAPS = [1,3,7,14,30,60];
+var KEY = "ltstudy.v1";
+var S = load();
+var view = "review", deck = "all", queue = null, qState = null;
+
+function load(){ try{ return JSON.parse(localStorage.getItem(KEY)) || {cards:{},miss:{},hist:[],days:{}}; }catch(e){ return {cards:{},miss:{},hist:[],days:{}}; } }
+function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} }
+function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
+function srcName(id){ var s=(D.sources||[]).filter(function(x){return x.id===id;})[0]; return s? s.name : id; }
+function cite(item){ return item.src ? '<div class="src">Source: '+esc(srcName(item.src))+(item.page?', p. '+esc(item.page):'')+'</div>' : ""; }
+function inDeck(x){ return deck==="all" || x.deck===deck; }
+function today(){ var d=new Date(); d.setHours(0,0,0,0); return d.getTime(); }
+function markDay(){ S.days[new Date().toISOString().slice(0,10)] = 1; }
+function due(){ var t=Date.now(); return D.cards.filter(inDeck).filter(function(c){ var st=S.cards[c.id]; return !st || st.due<=t; }); }
+
+document.getElementById("title").textContent = D.title || "Lieutenant Study";
+document.getElementById("sub").textContent = D.cards.length+" cards · "+D.questions.length+" questions · updated "+(D.updated||"");
+
+function deckPicker(){
+  var o='<select id="deck"><option value="all">All topics</option>';
+  (D.decks||[]).forEach(function(d){ o+='<option value="'+esc(d.id)+'"'+(deck===d.id?' selected':'')+'>'+esc(d.name)+'</option>'; });
+  return o+'</select>';
+}
+function bindDeck(){ var el=document.getElementById("deck"); if(el) el.onchange=function(){ deck=el.value; queue=null; qState=null; render(); }; }
+
+function renderReview(){
+  if(!queue) queue = shuffle(due());
+  var h = deckPicker();
+  var known = D.cards.filter(inDeck).filter(function(c){ var s=S.cards[c.id]; return s && s.step>=3; }).length;
+  h += '<div class="stats"><div class="stat"><b>'+queue.length+'</b><span>due now</span></div><div class="stat"><b>'+known+'</b><span>solid (1 wk+)</span></div><div class="stat"><b>'+D.cards.filter(inDeck).length+'</b><span>total</span></div></div>';
+  if(!queue.length) return h+'<div class="empty">Nothing due. Nice work.<br>Take a quiz or come back tomorrow.</div>';
+  var c = queue[0];
+  h += '<div class="card"><div class="front">'+esc(c.front)+'</div><div id="back" class="back" hidden>'+esc(c.back)+cite(c)+'</div></div>';
+  h += '<div class="row" id="show"><button class="btn primary" data-a="show">Show answer</button></div>';
+  h += '<div class="row" id="grade" hidden><button class="btn again" data-a="again">Again</button><button class="btn" data-a="hard">Hard</button><button class="btn good" data-a="good">Good</button></div>';
+  return h;
+}
+function grade(how){
+  var c=queue.shift(), st=S.cards[c.id]||{step:-1,due:0,seen:0,lapses:0};
+  st.seen++;
+  if(how==="again"){ st.step=0; st.lapses++; queue.splice(Math.min(3,queue.length),0,c); }
+  else { st.step = how==="good" ? Math.min(st.step+1,GAPS.length-1) : Math.max(st.step,0); }
+  st.due = how==="again" ? Date.now() : today() + GAPS[Math.max(st.step,0)]*DAY;
+  S.cards[c.id]=st; markDay(); save(); render();
+}
+
+function renderQuiz(){
+  var pool = D.questions.filter(inDeck);
+  var h = deckPicker();
+  if(!pool.length) return h+'<div class="empty">No questions for this topic yet.</div>';
+  if(!qState){ qState={list:shuffle(pool).slice(0,Math.min(pool.length,25)),i:0,right:0,picked:null}; }
+  if(qState.i>=qState.list.length){
+    var pct=Math.round(100*qState.right/qState.list.length);
+    return h+'<div class="card" style="text-align:center"><div class="front">'+pct+'%</div><p>'+qState.right+' of '+qState.list.length+' right</p></div><div class="row"><button class="btn primary" data-a="newquiz">New quiz</button></div>';
+  }
+  var q=qState.list[qState.i];
+  h += '<p class="src" style="margin:0 0 8px">Question '+(qState.i+1)+' of '+qState.list.length+' · '+qState.right+' right</p>';
+  h += '<div class="card" style="min-height:0"><div class="front">'+esc(q.q)+'</div></div>';
+  q.choices.forEach(function(ch,i){
+    var cls="btn choice";
+    if(qState.picked!==null){ if(i===q.answer) cls+=" right"; else if(i===qState.picked) cls+=" wrong"; }
+    h+='<button class="'+cls+'" data-a="pick" data-i="'+i+'"'+(qState.picked!==null?' disabled':'')+'>'+esc(ch)+'</button>';
+  });
+  if(qState.picked!==null){
+    h+='<div class="why"><b>'+(qState.picked===q.answer?'Correct.':'Not quite.')+'</b> '+esc(q.why||"")+cite(q)+'</div>';
+    h+='<div class="row"><button class="btn primary" data-a="next">Next</button></div>';
+  }
+  return h;
+}
+function pick(i){
+  var q=qState.list[qState.i]; qState.picked=i;
+  var ok = i===q.answer; if(ok) qState.right++;
+  else { S.miss[q.id]=(S.miss[q.id]||0)+1; }
+  if(ok && S.miss[q.id]) { S.miss[q.id]--; if(!S.miss[q.id]) delete S.miss[q.id]; }
+  S.hist.push({t:Date.now(),id:q.id,ok:ok}); if(S.hist.length>2000) S.hist=S.hist.slice(-2000);
+  markDay(); save(); render();
+}
+
+function renderWeak(){
+  var byDeck={};
+  Object.keys(S.miss).forEach(function(id){
+    var q=D.questions.filter(function(x){return x.id===id;})[0]; if(!q) return;
+    (byDeck[q.deck]=byDeck[q.deck]||[]).push({q:q,n:S.miss[id]});
+  });
+  var keys=Object.keys(byDeck);
+  if(!keys.length) return '<div class="empty">No weak spots yet. Missed quiz questions show up here.</div>';
+  keys.sort(function(a,b){return byDeck[b].length-byDeck[a].length;});
+  var h='<div class="row" style="margin:0 0 14px"><button class="btn primary" data-a="drill">Drill all missed ('+Object.keys(S.miss).length+')</button></div><ul class="list">';
+  keys.forEach(function(k){
+    var d=(D.decks||[]).filter(function(x){return x.id===k;})[0];
+    h+='<li><b>'+esc(d?d.name:k)+'</b> <small>'+byDeck[k].length+' missed</small><br>';
+    byDeck[k].slice(0,5).forEach(function(m){ h+='<small>• '+esc(m.q.q)+'</small><br>'; });
+    h+='</li>';
+  });
+  return h+'</ul>';
+}
+
+function renderAbout(){
+  var days=Object.keys(S.days).sort(), wk=0, now=Date.now();
+  days.forEach(function(d){ if(now-new Date(d).getTime()<7*DAY) wk++; });
+  var recent=S.hist.slice(-100), pct= recent.length? Math.round(100*recent.filter(function(h){return h.ok;}).length/recent.length):0;
+  var h='<div class="stats"><div class="stat"><b>'+wk+'</b><span>study days, last 7</span></div><div class="stat"><b>'+(recent.length?pct+'%':'–')+'</b><span>last 100 questions</span></div></div>';
+  h+='<h3>By topic</h3><ul class="list">';
+  (D.decks||[]).forEach(function(d){
+    var cs=D.cards.filter(function(c){return c.deck===d.id;}), solid=cs.filter(function(c){var s=S.cards[c.id];return s&&s.step>=3;}).length;
+    var p=cs.length?Math.round(100*solid/cs.length):0;
+    h+='<li><b>'+esc(d.name)+'</b> <small>'+solid+' of '+cs.length+' cards solid</small><div class="bar"><i style="width:'+p+'%"></i></div></li>';
+  });
+  h+='</ul><h3>Sources</h3><ul class="list">';
+  (D.sources||[]).forEach(function(s){ h+='<li>'+esc(s.name)+(s.version?' <small>v'+esc(s.version)+'</small>':'')+(s.effective?' <small>· effective '+esc(s.effective)+'</small>':'')+'</li>'; });
+  h+='</ul><p class="src">Progress is saved on this device only. Study material for personal exam prep; the official protocols always win.</p>';
+  h+='<p><button class="link" data-a="reset">Reset my progress</button></p>';
+  return h;
+}
+
+function shuffle(a){ a=a.slice(); for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=a[i];a[i]=a[j];a[j]=t;} return a; }
+
+function render(){
+  var app=document.getElementById("app");
+  app.innerHTML = view==="review"?renderReview(): view==="quiz"?renderQuiz(): view==="weak"?renderWeak(): renderAbout();
+  bindDeck();
+}
+document.getElementById("app").addEventListener("click",function(e){
+  var b=e.target.closest("[data-a]"); if(!b) return;
+  var a=b.getAttribute("data-a");
+  if(a==="show"){ document.getElementById("back").hidden=false; document.getElementById("show").hidden=true; document.getElementById("grade").hidden=false; }
+  else if(a==="again"||a==="hard"||a==="good") grade(a);
+  else if(a==="pick") pick(+b.getAttribute("data-i"));
+  else if(a==="next"){ qState.i++; qState.picked=null; render(); }
+  else if(a==="newquiz"){ qState=null; render(); }
+  else if(a==="drill"){ var ids=Object.keys(S.miss); qState={list:shuffle(D.questions.filter(function(q){return ids.indexOf(q.id)>=0;})),i:0,right:0,picked:null}; deck="all"; view="quiz"; setNav(); render(); }
+  else if(a==="reset"){ if(window.confirm && confirm("Clear all progress on this device?")){ S={cards:{},miss:{},hist:[],days:{}}; save(); queue=null; render(); } }
+});
+function setNav(){ Array.prototype.forEach.call(document.querySelectorAll("nav button"),function(b){ b.classList.toggle("on", b.getAttribute("data-v")===view); }); }
+Array.prototype.forEach.call(document.querySelectorAll("nav button"),function(b){
+  b.onclick=function(){ view=b.getAttribute("data-v"); queue=null; setNav(); render(); window.scrollTo(0,0); };
+});
+render();
+})();
+</script>
+</body>
+</html>
